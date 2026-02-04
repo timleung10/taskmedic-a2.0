@@ -1,4 +1,4 @@
-import type { DB, Item, JobItem, BleepItem, Urgency } from "../store";
+import type { DB, Item, JobItem, BleepItem, Urgency, ChecklistItem } from "../store";
 import { addChecklist, makeBase } from "../store";
 import { esc } from "../components/dom";
 
@@ -40,13 +40,17 @@ function draftTasksList(d: DraftAdd): string {
   if (!d.draftTasks.length) return `<div class="help">No tasks added yet.</div>`;
   return `
     <div class="miniList">
-      ${d.draftTasks.map((t, i) => `
+      ${d.draftTasks
+        .map(
+          (t, i) => `
         <div class="miniItem">
           <div>❌</div>
           <div class="miniText">${esc(t.text)}</div>
           <button class="btn small ghost" type="button" data-action="rmDraftTask" data-idx="${i}">Remove</button>
         </div>
-      `).join("")}
+      `
+        )
+        .join("")}
     </div>
   `;
 }
@@ -63,13 +67,15 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
 
     <div class="sheetBody">
       <div class="row" style="flex-wrap:wrap">
-        <button class="btn small ${d.tab==="job"?"primary":""}" type="button" data-action="tabJob">Job</button>
-        <button class="btn small ${d.tab==="bleep"?"primary":""}" type="button" data-action="tabBleep">Bleep</button>
+        <button class="btn small ${d.tab === "job" ? "primary" : ""}" type="button" data-action="tabJob">Job</button>
+        <button class="btn small ${d.tab === "bleep" ? "primary" : ""}" type="button" data-action="tabBleep">Bleep</button>
       </div>
 
       <div style="height:10px"></div>
 
-      ${d.tab==="job" ? `
+      ${
+        d.tab === "job"
+          ? `
         <form id="addJobForm">
           <div class="grid2">
             <label>Ward
@@ -91,9 +97,9 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           <div class="grid2">
             <label>Urgency
               <select name="urgency">
-                <option value="red" ${d.urgency==="red"?"selected":""}>Red (Immediate)</option>
-                <option value="amber" ${d.urgency==="amber"?"selected":""}>Amber (Soon)</option>
-                <option value="green" ${d.urgency==="green"?"selected":""}>Green (Routine)</option>
+                <option value="red" ${d.urgency === "red" ? "selected" : ""}>Red (Immediate)</option>
+                <option value="amber" ${d.urgency === "amber" ? "selected" : ""}>Amber (Soon)</option>
+                <option value="green" ${d.urgency === "green" ? "selected" : ""}>Green (Routine)</option>
               </select>
             </label>
             <label>Review by (optional)
@@ -115,7 +121,8 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
             <button class="btn primary" type="submit">Add job</button>
           </div>
         </form>
-      ` : `
+      `
+          : `
         <form id="addBleepForm">
           <label>From (ext/bleep)
             <input name="from" value="${esc(d.from)}" placeholder="e.g. x5678 / Bleep 1234"/>
@@ -132,9 +139,9 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           <div class="grid2">
             <label>Urgency
               <select name="urgency">
-                <option value="red" ${d.urgency==="red"?"selected":""}>Red (Immediate)</option>
-                <option value="amber" ${d.urgency==="amber"?"selected":""}>Amber (Soon)</option>
-                <option value="green" ${d.urgency==="green"?"selected":""}>Green (Routine)</option>
+                <option value="red" ${d.urgency === "red" ? "selected" : ""}>Red (Immediate)</option>
+                <option value="amber" ${d.urgency === "amber" ? "selected" : ""}>Amber (Soon)</option>
+                <option value="green" ${d.urgency === "green" ? "selected" : ""}>Green (Routine)</option>
               </select>
             </label>
             <label>Review by (optional)
@@ -143,7 +150,7 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           </div>
 
           <label class="row" style="gap:8px">
-            <input name="calledBack" type="checkbox" ${d.calledBack?"checked":""}/>
+            <input name="calledBack" type="checkbox" ${d.calledBack ? "checked" : ""}/>
             <span class="help" style="color:var(--text)">Called back?</span>
           </label>
 
@@ -161,14 +168,20 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
             <button class="btn primary" type="submit">Add bleep</button>
           </div>
         </form>
-      `}
+      `
+      }
     </div>
   </dialog>
   `;
 }
 
 export function buildItemFromDraft(d: DraftAdd): Item | null {
-  const tasks = d.draftTasks.reduce((arr, t) => addChecklist(arr, t.text), []);
+  // IMPORTANT: type the reducer so TS knows we're building ChecklistItem[]
+  const tasks = d.draftTasks.reduce<ChecklistItem[]>(
+  (arr, t) => addChecklist(arr, t.text),
+  [] as ChecklistItem[]
+);
+
   const base = makeBase(d.tab);
 
   base.urgency = d.urgency;
