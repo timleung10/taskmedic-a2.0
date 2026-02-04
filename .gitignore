@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build output
+dist/
+**/dist/
+
+# playwright
+test-results/
+playwright-report/
+.playwright/
+.trace/
+
+# env
+.env
+.env.*
+
+# OS junk
+.DS_Store
+Thumbs.db
