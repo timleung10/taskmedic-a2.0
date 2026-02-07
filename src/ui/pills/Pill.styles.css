@@ -1,0 +1,51 @@
+.tm-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tm-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 31px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  font-size: 13.8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  line-height: 1;
+  white-space: nowrap;
+  border: 0;
+}
+
+.tm-card-header .tm-pill {
+  border-radius: 12px;
+}
+
+.tm-pill-neutral {
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+.tm-pill-info {
+  background: rgba(69, 120, 232, 0.16);
+  color: #2b4a92;
+}
+
+.tm-pill-amber {
+  background: rgba(235, 185, 110, 0.25);
+  color: #94602d;
+}
+
+.tm-pill-danger {
+  background: var(--chip-danger);
+  color: #8e3a3a;
+}
+
+.tm-pill-success {
+  background: rgba(108, 209, 164, 0.22);
+  color: #2f6b4c;
+}

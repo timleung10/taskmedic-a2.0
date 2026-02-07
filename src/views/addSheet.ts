@@ -44,7 +44,7 @@ function draftTasksList(d: DraftAdd): string {
         .map(
           (t, i) => `
         <div class="miniItem">
-          <div>❌</div>
+          <div class="mini-dot"></div>
           <div class="miniText">${esc(t.text)}</div>
           <button class="btn small ghost" type="button" data-action="rmDraftTask" data-idx="${i}">Remove</button>
         </div>
@@ -87,7 +87,7 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           </div>
 
           <label>Summary (anonymised)
-            <input name="summary" value="${esc(d.summary)}" placeholder="e.g. ?Sepsis – improving"/>
+            <input name="summary" value="${esc(d.summary)}" placeholder="e.g. ?Sepsis – improving" data-testid="add-summary"/>
           </label>
 
           <label>Secondary summary (optional)
@@ -111,8 +111,8 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
             <strong>Tasks</strong>
             <div class="help">Add as many as you want. Press Enter to add.</div>
             <div class="row" style="margin-top:8px">
-              <input name="draftTaskText" value="${esc(d.draftTaskText)}" placeholder="Add a task…" />
-              <button class="btn small primary" type="button" data-action="addDraftTask">Add</button>
+              <input name="draftTaskText" value="${esc(d.draftTaskText)}" placeholder="Add a task…" data-testid="add-task-input"/>
+              <button class="btn small primary" type="button" data-action="addDraftTask" data-testid="add-draft-task">Add</button>
             </div>
             ${draftTasksList(d)}
           </div>
@@ -125,7 +125,7 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           : `
         <form id="addBleepForm">
           <label>From (ext/bleep)
-            <input name="from" value="${esc(d.from)}" placeholder="e.g. x5678 / Bleep 1234"/>
+            <input name="from" value="${esc(d.from)}" placeholder="e.g. x5678 / Bleep 1234" data-testid="add-bleep-from"/>
           </label>
 
           <label>Location (optional)
@@ -133,7 +133,7 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
           </label>
 
           <label>Task summary (optional — add after calling back)
-            <input name="bleepSummary" value="${esc(d.bleepSummary)}" placeholder="Job / task"/>
+            <input name="bleepSummary" value="${esc(d.bleepSummary)}" placeholder="Job / task" data-testid="add-bleep-summary"/>
           </label>
 
           <div class="grid2">
@@ -149,17 +149,24 @@ export function renderAddSheet(_db: DB, d: DraftAdd): string {
             </label>
           </div>
 
-          <label class="row" style="gap:8px">
-            <input name="calledBack" type="checkbox" ${d.calledBack ? "checked" : ""}/>
-            <span class="help" style="color:var(--text)">Called back?</span>
-          </label>
+          <div class="row" style="gap:8px">
+            <button
+              type="button"
+              class="tm-circle-toggle"
+              role="checkbox"
+              aria-checked="${d.calledBack ? "true" : "false"}"
+              data-action="toggleDraftCalledBack"
+              aria-label="Called back"
+            ></button>
+            <span class="help">Called back?</span>
+          </div>
 
           <div class="notice">
             <strong>Tasks</strong>
             <div class="help">Add as many as you want. Press Enter to add.</div>
             <div class="row" style="margin-top:8px">
-              <input name="draftTaskText" value="${esc(d.draftTaskText)}" placeholder="Add a task…" />
-              <button class="btn small primary" type="button" data-action="addDraftTask">Add</button>
+              <input name="draftTaskText" value="${esc(d.draftTaskText)}" placeholder="Add a task…" data-testid="add-task-input"/>
+              <button class="btn small primary" type="button" data-action="addDraftTask" data-testid="add-draft-task">Add</button>
             </div>
             ${draftTasksList(d)}
           </div>

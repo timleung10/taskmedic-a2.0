@@ -1,0 +1,37 @@
+:root {
+  --bg-base: #f1f8fc;
+  --bg-soft: #f8fbfe;
+  --bg-gradient: radial-gradient(circle at 65% -20%, #d0faff 0%, #e4f3ff 40%, #f6fbff 100%);
+
+  --ios-blue: #2f6bff;
+  --ink-strong: #1f2a3d;
+  --ink-muted: #6f7b93;
+
+  --surface: rgba(255, 255, 255, 0.98);
+  --surface-card: #ffffff;
+  --surface-inset: #f4f7fb;
+
+  --radius-card: 22px;
+  --radius-pill: 999px;
+  --radius-input: 18px;
+
+  --shadow-card: 0 20px 40px rgba(30, 42, 66, 0.12), 0 6px 18px rgba(30, 42, 66, 0.06);
+  --shadow-floating: 0 10px 18px rgba(30, 42, 66, 0.12);
+
+  --type-title: 24px;
+  --type-subtitle: 17px;
+  --type-chip: 14px;
+  --type-body: 20px;
+  --type-micro: 13px;
+  --lh-body: 1.5;
+
+  --chip-bg: #eef1f6;
+  --chip-text: #66748e;
+  --chip-danger: #f7d6d8;
+  --chip-danger-text: #c06b6b;
+
+  --done-green: #2bb673;
+  --done-ring: #c7ceda;
+
+  --font-sans: "Figtree", "Inter", "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}

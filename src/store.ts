@@ -40,7 +40,7 @@ export type Item = JobItem | BleepItem;
 export type Prefs = {
   filter: "all" | "open" | "done";
   kind: "all" | "job" | "bleep";
-  sort: "triage" | "newest";
+  sort: "triage" | "triageTime" | "newest";
   search: string;
 };
 
@@ -105,7 +105,11 @@ export function addProgress(arr: ProgressNote[], text: string): ProgressNote[] {
 }
 
 export function toggleChecklist(arr: ChecklistItem[], id: string): ChecklistItem[] {
-  return arr.map(x => x.id === id ? { ...x, done: !x.done } : x);
+  return arr.map((x) => {
+    if (x.id !== id) return x;
+    const nextDone = !x.done;
+    return { ...x, done: nextDone, t: nextDone ? Date.now() : x.t };
+  });
 }
 
 export function removeById<T extends { id: string }>(arr: T[], id: string): T[] {
@@ -136,6 +140,17 @@ export function sortItems(items: Item[], sort: Prefs["sort"]): Item[] {
   const list = [...items];
   if (sort === "newest") {
     list.sort((a,b) => b.createdAt - a.createdAt);
+    return list;
+  }
+  if (sort === "triageTime") {
+    list.sort((a,b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const ra = urgencyRank(a.urgency), rb = urgencyRank(b.urgency);
+      if (ra !== rb) return ra - rb;
+      const ta = a.createdAt, tb = b.createdAt;
+      if (ta !== tb) return ta - tb;
+      return (a.reviewBy ?? Number.POSITIVE_INFINITY) - (b.reviewBy ?? Number.POSITIVE_INFINITY);
+    });
     return list;
   }
   list.sort((a,b) => {

@@ -1,53 +1,66 @@
 import "./styles.css";
 import { registerSW } from "virtual:pwa-register";
-import { loadDB, saveDB, type DB, type Item, addChecklist, addProgress, toggleChecklist, removeById, updateText } from "./store";
-import { renderList } from "./views/listView";
-import { renderAddSheet, defaultDraft, buildItemFromDraft, type DraftAdd } from "./views/addSheet";
+import {
+  addChecklist,
+  addProgress,
+  loadDB,
+  removeById,
+  saveDB,
+  toggleChecklist,
+  type DB,
+  type Item,
+  updateText
+} from "./store";
+import { byId, fmtHM } from "./components/dom";
+import { renderAddSheet, buildItemFromDraft, defaultDraft, type DraftAdd } from "./views/addSheet";
 import { renderEditSheet } from "./views/editSheet";
+import { renderList } from "./views/listView";
 import { renderTools } from "./views/toolsView";
-import { byId } from "./components/dom";
+import { bindCardGestures } from "./ui/cards/gestures";
+import { syncMotionPreference } from "./ui/cards/animations";
+import { renderPillRow } from "./ui/cards/CardCollapsed";
 
 registerSW({ immediate: true });
 
 type Route = "list" | "tools";
-const app = document.getElementById("app")!;
+const app = byId<HTMLElement>("app");
 
 let db: DB;
 let route: Route = "list";
 let draft: DraftAdd = defaultDraft();
 let editId: string | null = null;
-
 const expandedIds = new Set<string>();
 let listScrollY = 0;
-
 let addWasOpen = false;
 let editWasOpen = false;
+let filtersOpen = false;
+let unbindGestures: (() => void) | null = null;
 
-let scribe = {
+const scribe = {
   running: false,
   startAt: undefined as number | undefined,
   elapsed: 0,
   log: [] as { t: number; text: string }[]
 };
 
-function setRoute(r: Route) {
-  route = r;
+function setRoute(next: Route): void {
+  route = next;
   render();
 }
 
-function openAdd() {
+function openAdd(): void {
   addWasOpen = true;
   const d = byId<HTMLDialogElement>("addSheet");
   if (!d.open) d.showModal();
 }
 
-function closeAdd() {
+function closeAdd(): void {
   addWasOpen = false;
   const d = byId<HTMLDialogElement>("addSheet");
   if (d.open) d.close();
 }
 
-function openEdit(id: string) {
+function openEdit(id: string): void {
   editId = id;
   editWasOpen = true;
   render();
@@ -55,7 +68,7 @@ function openEdit(id: string) {
   if (!d.open) d.showModal();
 }
 
-function closeEdit() {
+function closeEdit(): void {
   editWasOpen = false;
   const d = byId<HTMLDialogElement>("editSheet");
   if (d.open) d.close();
@@ -63,70 +76,82 @@ function closeEdit() {
   render();
 }
 
-async function commit() {
-  db = { ...db, items: db.items.map(x => x), prefs: { ...db.prefs } };
+async function commit(): Promise<void> {
+  db = { ...db, items: db.items.map((x) => x), prefs: { ...db.prefs } };
   await saveDB(db);
 }
 
 function getItem(id: string): Item | null {
-  return db.items.find(x => x.id === id) ?? null;
+  return db.items.find((x) => x.id === id) ?? null;
 }
 
-async function updateItem(id: string, fn: (it: Item) => Item) {
-  const idx = db.items.findIndex(x => x.id === id);
+async function updateItem(id: string, fn: (it: Item) => Item): Promise<void> {
+  const idx = db.items.findIndex((x) => x.id === id);
   if (idx < 0) return;
   const it = db.items[idx];
   const next = fn({ ...it, updatedAt: Date.now() } as Item);
-  db.items = [...db.items.slice(0, idx), next, ...db.items.slice(idx+1)];
+  db.items = [...db.items.slice(0, idx), next, ...db.items.slice(idx + 1)];
   await commit();
   render();
 }
 
-// Some interactions inside the edit sheet (especially checkbox toggles) should persist
-// without forcing a full re-render, otherwise mobile browsers can jump scroll position.
-async function updateItemSilent(id: string, fn: (it: Item) => Item) {
-  const idx = db.items.findIndex(x => x.id === id);
+async function updateItemSilent(id: string, fn: (it: Item) => Item): Promise<void> {
+  const idx = db.items.findIndex((x) => x.id === id);
   if (idx < 0) return;
   const it = db.items[idx];
   const next = fn({ ...it, updatedAt: Date.now() } as Item);
-  db.items = [...db.items.slice(0, idx), next, ...db.items.slice(idx+1)];
+  db.items = [...db.items.slice(0, idx), next, ...db.items.slice(idx + 1)];
   await commit();
 }
 
-async function deleteItem(id: string) {
-  db.items = db.items.filter(x => x.id !== id);
+async function deleteItem(id: string): Promise<void> {
+  db.items = db.items.filter((x) => x.id !== id);
+  expandedIds.delete(id);
   await commit();
   if (editId === id) editId = null;
   render();
 }
 
-function startScribe() {
+function toggleExpanded(id: string): void {
+  if (expandedIds.has(id)) expandedIds.delete(id);
+  else expandedIds.add(id);
+}
+
+function syncOutstandingPill(_id: string): void {
+  const it = getItem(_id);
+  if (!it) return;
+  const safeId = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(_id) : _id;
+  const card = document.querySelector(`[data-card-id="${safeId}"]`);
+  const row = card?.querySelector(".tm-pill-row");
+  if (row) row.innerHTML = renderPillRow(it);
+}
+
+function startScribe(): void {
   if (scribe.running) return;
   scribe.running = true;
   scribe.startAt = Date.now() - scribe.elapsed;
 }
 
-function pauseScribe() {
+function pauseScribe(): void {
   if (!scribe.running) return;
   scribe.running = false;
   if (scribe.startAt) scribe.elapsed = Date.now() - scribe.startAt;
 }
 
-function resetScribe() {
+function resetScribe(): void {
   scribe.running = false;
   scribe.startAt = undefined;
   scribe.elapsed = 0;
 }
 
-function tickScribe() {
-  if (scribe.running && scribe.startAt) {
-    scribe.elapsed = Date.now() - scribe.startAt;
-    if (route === "tools") render();
-  }
+function tickScribe(): void {
+  if (!scribe.running || !scribe.startAt) return;
+  scribe.elapsed = Date.now() - scribe.startAt;
+  if (route === "tools") render();
 }
 setInterval(tickScribe, 500);
 
-function addScribeEntry(text: string) {
+function addScribeEntry(text: string): void {
   const mm = Math.floor(scribe.elapsed / 60000);
   const ss = Math.floor((scribe.elapsed % 60000) / 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -134,73 +159,85 @@ function addScribeEntry(text: string) {
   scribe.log.unshift({ t: Date.now(), text: `${stamp} ${text}`.trim() });
 }
 
-async function wipeShift() {
+async function wipeShift(): Promise<void> {
   db.items = [];
+  expandedIds.clear();
   await commit();
   render();
 }
 
-function renderNav(): string {
-  const mk = (r: Route, icon: string, label: string) => `
-    <button class="navBtn ${route===r?"active":""}" data-action="nav" data-route="${r}">
-      <div class="navIcon">${icon}</div>
-      <div class="navLabel">${label}</div>
-    </button>
-  `;
-  return `
-    <div class="bottomNav">
-      <div class="navInner">
-        ${mk("list","☰","List")}
-        <button class="navBtn active" data-action="openAdd">
-          <div class="navIcon">＋</div>
-          <div class="navLabel">Add</div>
-        </button>
-        ${mk("tools","🩺","Tools")}
-      </div>
-    </div>
-  `;
+function bindListGestures(): void {
+  if (unbindGestures) {
+    unbindGestures();
+    unbindGestures = null;
+  }
+
+  if (route !== "list") return;
+  const list = document.getElementById("list");
+  if (!list) return;
+
+  unbindGestures = bindCardGestures(list, {
+    onLongPressToggle: (id) => {
+      if (!expandedIds.has(id)) {
+        expandedIds.add(id);
+        render();
+      }
+    }
+  });
 }
 
-function render() {
-  const body = route === "list" ? renderList(db, expandedIds) : renderTools(scribe);
+function render(): void {
+  const body = route === "list" ? renderList(db, expandedIds, filtersOpen) : renderTools(scribe);
   const addDialog = renderAddSheet(db, draft);
-  const editDialog = editId ? (() => {
-    const it = getItem(editId!);
-    return it ? renderEditSheet(it) : "";
-  })() : "";
+  const editDialog = editId
+    ? (() => {
+        const it = getItem(editId!);
+        return it ? renderEditSheet(it) : "";
+      })()
+    : "";
 
-  app.innerHTML = `${body}${addDialog}${editDialog}${renderNav()}`;
+  if (unbindGestures) {
+    unbindGestures();
+    unbindGestures = null;
+  }
 
-  // Re-open dialogs after render if they were open (prevents closing during edits)
+  app.innerHTML = `${body}${addDialog}${editDialog}`;
+
   const addD = document.getElementById("addSheet") as HTMLDialogElement | null;
   if (addWasOpen && addD && !addD.open) addD.showModal();
 
   const editD = document.getElementById("editSheet") as HTMLDialogElement | null;
   if (editWasOpen && editId && editD && !editD.open) editD.showModal();
 
-  // Restore scroll position to prevent jump-to-top on re-render
   if (route === "list" && !addWasOpen && !editWasOpen) {
     requestAnimationFrame(() => {
       window.scrollTo(0, listScrollY);
     });
   }
+
+  syncMotionPreference();
+  bindListGestures();
+}
+
+function shouldIgnoreTap(btn: HTMLElement): boolean {
+  const until = Number(btn.dataset.ignoreTapUntil ?? "0");
+  return Number.isFinite(until) && Date.now() < until;
 }
 
 document.addEventListener("click", async (e) => {
-  const t = e.target as HTMLElement | null;
-  if (!t) return;
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
 
-  const btn = t.closest("[data-action]") as HTMLElement | null;
+  const btn = target.closest("[data-action]") as HTMLElement | null;
   if (!btn) return;
 
   const action = btn.getAttribute("data-action") ?? "";
-  const tag = (btn as HTMLElement).tagName;
+  const tag = btn.tagName;
   const isField = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
 
-  // Fix16: Clicking/focusing fields inside sheets should NOT trigger action handlers (prevents re-render bounce).
   if (isField) {
-    const inEdit = editWasOpen && (btn.closest && btn.closest("#editSheet"));
-    const inAdd = addWasOpen && (btn.closest && btn.closest("#addSheet"));
+    const inEdit = editWasOpen && btn.closest("#editSheet");
+    const inAdd = addWasOpen && btn.closest("#addSheet");
     if (inEdit || inAdd) return;
   }
 
@@ -210,47 +247,105 @@ document.addEventListener("click", async (e) => {
   }
 
   if (action === "nav") {
-    const r = (btn.getAttribute("data-route") ?? "list") as Route;
-    setRoute(r);
+    const next = (btn.getAttribute("data-route") ?? "list") as Route;
+    setRoute(next);
     return;
   }
 
-  if (action === "openAdd") { openAdd(); return; }
-  if (action === "closeAdd") { closeAdd(); return; }
+  if (action === "openAdd") {
+    openAdd();
+    return;
+  }
+  if (action === "closeAdd") {
+    closeAdd();
+    return;
+  }
 
-  if (action === "tabJob") { draft = { ...draft, tab: "job" }; render(); openAdd(); return; }
-  if (action === "tabBleep") { draft = { ...draft, tab: "bleep" }; render(); openAdd(); return; }
+  if (action === "toggleFilters") {
+    filtersOpen = !filtersOpen;
+    render();
+    return;
+  }
+
+  if (action === "tabJob") {
+    draft = { ...draft, tab: "job" };
+    render();
+    openAdd();
+    return;
+  }
+  if (action === "tabBleep") {
+    draft = { ...draft, tab: "bleep" };
+    render();
+    openAdd();
+    return;
+  }
 
   if (action === "addDraftTask") {
     const text = draft.draftTaskText.trim();
     if (!text) return;
     draft = { ...draft, draftTasks: [...draft.draftTasks, { text }], draftTaskText: "" };
-    render(); openAdd();
+    render();
+    openAdd();
     return;
   }
 
   if (action === "rmDraftTask") {
     const idx = Number(btn.getAttribute("data-idx") ?? "-1");
     if (idx < 0) return;
-    draft = { ...draft, draftTasks: draft.draftTasks.filter((_,i)=>i!==idx) };
-    render(); openAdd();
+    draft = { ...draft, draftTasks: draft.draftTasks.filter((_, i) => i !== idx) };
+    render();
+    openAdd();
     return;
   }
 
-  if (action === "wipeShift") { await wipeShift(); return; }
+  if (action === "wipeShift") {
+    await wipeShift();
+    return;
+  }
+
+  if (action === "toggleDraftCalledBack") {
+    draft = { ...draft, calledBack: !draft.calledBack };
+    render();
+    openAdd();
+    return;
+  }
 
   if (action === "openEdit") {
     const id = btn.getAttribute("data-id") ?? "";
     if (id) openEdit(id);
     return;
   }
-  if (action === "closeEdit") { closeEdit(); return; }
 
+  if (action === "closeEdit") {
+    closeEdit();
+    return;
+  }
+
+  if (action === "cardTap") {
+    const id = btn.getAttribute("data-id") ?? "";
+    if (!id || shouldIgnoreTap(btn)) return;
+
+    const isExpanded = expandedIds.has(id);
+    const inExpandedPanel = Boolean(target.closest(".tm-card-expanded"));
+    const inHeader = Boolean(target.closest(".tm-card-header"));
+
+    if (!isExpanded) {
+      expandedIds.add(id);
+      render();
+      return;
+    }
+
+    if (inHeader || !inExpandedPanel) {
+      expandedIds.delete(id);
+      render();
+    }
+    return;
+  }
 
   if (action === "toggleExpand") {
     const id = btn.getAttribute("data-id") ?? "";
     if (!id) return;
-    if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+    toggleExpanded(id);
     render();
     return;
   }
@@ -269,14 +364,40 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  // Editor mutations
+  if (action === "toggleInlineCheck") {
+    const id = btn.getAttribute("data-id") ?? "";
+    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
+    const xid = btn.getAttribute("data-xid") ?? "";
+    if (!id || !xid) return;
 
+    const cardSurface = btn.closest(".tm-card-surface") as HTMLElement | null;
+    if (cardSurface) {
+      cardSurface.classList.add("suppress-press");
+      window.setTimeout(() => cardSurface.classList.remove("suppress-press"), 160);
+    }
 
+    await updateItemSilent(id, (it) => {
+      const arr = kind === "tasks" ? it.tasks : it.actions;
+      const next = toggleChecklist(arr, xid);
+      return kind === "tasks" ? ({ ...it, tasks: next }) : ({ ...it, actions: next });
+    });
 
+    const row = btn.closest(".tm-check-row");
+    const nextChecked = btn.getAttribute("aria-checked") !== "true";
+    btn.setAttribute("aria-checked", nextChecked ? "true" : "false");
+    if (row) {
+      row.classList.toggle("is-complete", nextChecked);
+      row.setAttribute("data-done", nextChecked ? "true" : "false");
+    }
+    const timeNode = row?.querySelector<HTMLElement>(".tm-check-time");
+    if (timeNode) timeNode.textContent = nextChecked ? `Completed ${fmtHM(Date.now())}` : "";
+    syncOutstandingPill(id);
+    return;
+  }
 
   if (action === "addCheck") {
     const id = btn.getAttribute("data-id") ?? "";
-    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks"|"actions";
+    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
     if (!id) return;
     const sheet = btn.closest("#editSheet") as HTMLElement | null;
     const input = sheet?.querySelector(`input[data-action="newTaskInput"][data-id="${id}"][data-kind="${kind}"]`) as HTMLInputElement | null;
@@ -293,20 +414,31 @@ document.addEventListener("click", async (e) => {
 
   if (action === "toggleCheck") {
     const id = btn.getAttribute("data-id") ?? "";
-    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks"|"actions";
+    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
     const xid = btn.getAttribute("data-xid") ?? "";
     if (!id || !xid) return;
-    await updateItem(id, (it) => {
+    await updateItemSilent(id, (it) => {
       const arr = kind === "tasks" ? it.tasks : it.actions;
       const next = toggleChecklist(arr, xid);
       return kind === "tasks" ? ({ ...it, tasks: next }) : ({ ...it, actions: next });
     });
+    const nextChecked = btn.getAttribute("aria-checked") !== "true";
+    btn.setAttribute("aria-checked", nextChecked ? "true" : "false");
+    return;
+  }
+
+  if (action === "toggleCalledBack") {
+    const id = btn.getAttribute("data-id") ?? "";
+    if (!id) return;
+    await updateItem(id, (it) =>
+      it.type === "bleep" ? ({ ...it, calledBack: !it.calledBack } as Item) : it
+    );
     return;
   }
 
   if (action === "rmCheck") {
     const id = btn.getAttribute("data-id") ?? "";
-    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks"|"actions";
+    const kind = (btn.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
     const xid = btn.getAttribute("data-xid") ?? "";
     if (!id || !xid) return;
     await updateItem(id, (it) => {
@@ -316,7 +448,6 @@ document.addEventListener("click", async (e) => {
     });
     return;
   }
-
 
   if (action === "addProgress") {
     const id = btn.getAttribute("data-id") ?? "";
@@ -338,11 +469,21 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-
-  // Scribe actions
-  if (action === "scribeStart") { startScribe(); render(); return; }
-  if (action === "scribePause") { pauseScribe(); render(); return; }
-  if (action === "scribeReset") { resetScribe(); render(); return; }
+  if (action === "scribeStart") {
+    startScribe();
+    render();
+    return;
+  }
+  if (action === "scribePause") {
+    pauseScribe();
+    render();
+    return;
+  }
+  if (action === "scribeReset") {
+    resetScribe();
+    render();
+    return;
+  }
 
   if (action === "scribeQuick") {
     const txt = btn.getAttribute("data-text") ?? "";
@@ -361,12 +502,55 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  if (action === "scribeClear") { scribe.log = []; render(); return; }
-  if (action === "scribeCopy") {
-    const text = scribe.log.slice().reverse().map(x => x.text).join("\n");
-    try { await navigator.clipboard.writeText(text); } catch {}
+  if (action === "scribeClear") {
+    scribe.log = [];
+    render();
     return;
   }
+
+  if (action === "scribeCopy") {
+    const text = scribe.log
+      .slice()
+      .reverse()
+      .map((x) => x.text)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {}
+  }
+});
+
+document.addEventListener("pointerdown", (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  const check = target.closest('[data-action="toggleInlineCheck"]') as HTMLElement | null;
+  if (!check) return;
+  const cardSurface = check.closest(".tm-card-surface") as HTMLElement | null;
+  if (!cardSurface) return;
+  cardSurface.classList.add("suppress-press");
+  check.dataset.suppressCard = "true";
+});
+
+document.addEventListener("pointerup", (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  const check = target.closest('[data-action="toggleInlineCheck"]') as HTMLElement | null;
+  if (!check) return;
+  if (check.dataset.suppressCard !== "true") return;
+  const cardSurface = check.closest(".tm-card-surface") as HTMLElement | null;
+  if (cardSurface) cardSurface.classList.remove("suppress-press");
+  delete check.dataset.suppressCard;
+});
+
+document.addEventListener("pointercancel", (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  const check = target.closest('[data-action="toggleInlineCheck"]') as HTMLElement | null;
+  if (!check) return;
+  if (check.dataset.suppressCard !== "true") return;
+  const cardSurface = check.closest(".tm-card-surface") as HTMLElement | null;
+  if (cardSurface) cardSurface.classList.remove("suppress-press");
+  delete check.dataset.suppressCard;
 });
 
 document.addEventListener("input", async (e) => {
@@ -380,52 +564,48 @@ document.addEventListener("input", async (e) => {
     return;
   }
   if (t.id === "kind") {
-    db.prefs.kind = (t as HTMLSelectElement).value as any;
+    db.prefs.kind = (t as HTMLSelectElement).value as DB["prefs"]["kind"];
     await commit();
     render();
     return;
   }
   if (t.id === "filter") {
-    db.prefs.filter = (t as HTMLSelectElement).value as any;
+    db.prefs.filter = (t as HTMLSelectElement).value as DB["prefs"]["filter"];
     await commit();
     render();
     return;
   }
   if (t.id === "sort") {
-    db.prefs.sort = (t as HTMLSelectElement).value as any;
+    db.prefs.sort = (t as HTMLSelectElement).value as DB["prefs"]["sort"];
     await commit();
     render();
     return;
   }
 
   const form = t.closest("form");
-  if (!form) return;
-  if (form.id === "addJobForm" || form.id === "addBleepForm") {
+  if (form && (form.id === "addJobForm" || form.id === "addBleepForm")) {
     const input = t as HTMLInputElement;
     const name = input.name;
     if (!name) return;
-    if (input.type === "checkbox") {
-      draft = { ...draft, [name]: input.checked } as any;
-    } else {
-      draft = { ...draft, [name]: input.value } as any;
-    }
+    if (input.type === "checkbox") draft = { ...draft, [name]: input.checked } as DraftAdd;
+    else draft = { ...draft, [name]: input.value } as DraftAdd;
   }
-  // Edit sheet live edits (text fields)
-  const act = (t as HTMLElement).getAttribute?.("data-action") ?? "";
+
+  const act = t.getAttribute?.("data-action") ?? "";
   if (act === "editField") {
     const el = t as HTMLInputElement;
     const id = el.getAttribute("data-id") ?? "";
     const field = el.getAttribute("data-field") ?? "";
-    if (id && field) await updateItem(id, (it) => ({ ...it, [field]: el.value || undefined } as any));
+    if (id && field) await updateItemSilent(id, (it) => ({ ...it, [field]: el.value || undefined } as Item));
     return;
   }
   if (act === "editCheckText") {
     const el = t as HTMLInputElement;
     const id = el.getAttribute("data-id") ?? "";
-    const kind = (el.getAttribute("data-kind") ?? "tasks") as "tasks"|"actions";
+    const kind = (el.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
     const xid = el.getAttribute("data-xid") ?? "";
     if (!id || !xid) return;
-    await updateItem(id, (it) => {
+    await updateItemSilent(id, (it) => {
       const arr = kind === "tasks" ? it.tasks : it.actions;
       const next = updateText(arr, xid, el.value);
       return kind === "tasks" ? ({ ...it, tasks: next }) : ({ ...it, actions: next });
@@ -437,10 +617,8 @@ document.addEventListener("input", async (e) => {
     const id = el.getAttribute("data-id") ?? "";
     const pid = el.getAttribute("data-pid") ?? "";
     if (!id || !pid) return;
-    await updateItem(id, (it) => ({ ...it, progress: updateText(it.progress, pid, el.value) }));
-    return;
+    await updateItemSilent(id, (it) => ({ ...it, progress: updateText(it.progress, pid, el.value) }));
   }
-
 });
 
 document.addEventListener("keydown", (e) => {
@@ -458,7 +636,8 @@ document.addEventListener("keydown", (e) => {
     const text = draft.draftTaskText.trim();
     if (!text) return;
     draft = { ...draft, draftTasks: [...draft.draftTasks, { text }], draftTaskText: "" };
-    render(); openAdd();
+    render();
+    openAdd();
   }
 });
 
@@ -476,38 +655,18 @@ document.addEventListener("submit", async (e) => {
     draft = defaultDraft();
     render();
     closeAdd();
-    return;
   }
 });
-
 
 document.addEventListener("change", async (e) => {
   const t = e.target as HTMLElement | null;
   if (!t) return;
-  const act = (t as HTMLElement).getAttribute?.("data-action") ?? "";
-
-  // Persist checkbox toggles from inside the edit sheet without re-rendering.
-  // We intentionally ignore click handlers for inputs inside dialogs to prevent
-  // scroll-position jumps. This handler ensures the data still saves.
-  if (act === "toggleCheck") {
-    const el = t as HTMLInputElement;
-    const id = el.getAttribute("data-id") ?? "";
-    const kind = (el.getAttribute("data-kind") ?? "tasks") as "tasks" | "actions";
-    const xid = el.getAttribute("data-xid") ?? "";
-    if (!id || !xid) return;
-    await updateItemSilent(id, (it) => {
-      const arr = kind === "tasks" ? it.tasks : it.actions;
-      const next = toggleChecklist(arr, xid);
-      return kind === "tasks" ? ({ ...it, tasks: next }) : ({ ...it, actions: next });
-    });
-    return;
-  }
+  const act = t.getAttribute?.("data-action") ?? "";
 
   if (act === "editUrgency") {
     const el = t as HTMLSelectElement;
     const id = el.getAttribute("data-id") ?? "";
-    const val = el.value as any;
-    if (id) await updateItem(id, (it) => ({ ...it, urgency: val }));
+    if (id) await updateItemSilent(id, (it) => ({ ...it, urgency: el.value as Item["urgency"] }));
     return;
   }
 
@@ -515,24 +674,25 @@ document.addEventListener("change", async (e) => {
     const el = t as HTMLInputElement;
     const id = el.getAttribute("data-id") ?? "";
     const val = el.value;
-    if (id) await updateItem(id, (it) => ({ ...it, reviewBy: val ? new Date(val).getTime() : undefined }));
-    return;
-  }
-
-  if (act === "toggleCalledBack") {
-    const el = t as HTMLInputElement;
-    const id = el.getAttribute("data-id") ?? "";
-    if (id) await updateItem(id, (it) => it.type==="bleep" ? ({ ...it, calledBack: el.checked } as any) : it);
+    if (id) await updateItemSilent(id, (it) => ({ ...it, reviewBy: val ? new Date(val).getTime() : undefined }));
     return;
   }
 });
 
+window.addEventListener(
+  "scroll",
+  () => {
+    if (route !== "list") return;
+    if (addWasOpen || editWasOpen) return;
+    listScrollY = window.scrollY;
+  },
+  { passive: true }
+);
 
-window.addEventListener("scroll", () => {
-  if (route !== "list") return;
-  if (addWasOpen || editWasOpen) return;
-  listScrollY = window.scrollY;
-}, { passive: true });
+const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const onMotionChange = () => syncMotionPreference();
+if (typeof motionQuery.addEventListener === "function") motionQuery.addEventListener("change", onMotionChange);
+else motionQuery.addListener(onMotionChange);
 
 (async function init() {
   db = await loadDB();

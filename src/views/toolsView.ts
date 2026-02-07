@@ -20,31 +20,30 @@ export function renderTools(state: { running: boolean; startAt?: number; elapsed
   ];
 
   return `
-    <div class="wrap">
-      <header class="topbar">
-        <div class="brand">
-          <div class="logo">TM</div>
-          <div>
-            <h1>TaskMedic</h1>
-            <div class="tag">Tools</div>
-          </div>
+    <div class="tm-shell">
+      <header class="tm-header">
+        <div class="tm-brand-block">
+          <h1 class="tm-brand">TaskMedic</h1>
+          <div class="tm-subtle">Tools</div>
         </div>
-        <div class="pills">
-          <span class="pill"><strong>Offline</strong></span>
+        <div class="tm-header-actions">
+          <button class="tm-header-chip" data-action="nav" data-route="list">List</button>
         </div>
       </header>
 
-      <section class="section">
-        <div class="sectionTitle">
-          <h2>Cardiac arrest scribe</h2>
-          <div class="small">Fast logging • Timestamped</div>
+      <section class="tm-tool-section">
+        <div class="tm-tool-title">
+          <div>
+            <h2>Cardiac arrest scribe</h2>
+            <div class="tm-subtle">Fast logging â€¢ Timestamped</div>
+          </div>
         </div>
 
-        <div class="card item">
-          <div class="row between">
-            <div class="stack">
-              <div class="meta">Elapsed</div>
-              <div style="font-size:28px;font-weight:800;letter-spacing:.6px">${stamp}</div>
+        <div class="tm-tool-card">
+          <div class="tm-tool-row">
+            <div class="tm-tool-stack">
+              <div class="tm-tool-meta">Elapsed</div>
+              <div class="tm-tool-time">${stamp}</div>
             </div>
             <div class="row" style="flex-wrap:wrap;justify-content:flex-end">
               <button class="btn small ${state.running ? "" : "primary"}" data-action="scribeStart">${state.running ? "Running" : "Start"}</button>
@@ -53,7 +52,7 @@ export function renderTools(state: { running: boolean; startAt?: number; elapsed
             </div>
           </div>
 
-          <hr class="sep"/>
+          <div class="tm-tool-divider"></div>
 
           <div class="help">Quick events</div>
           <div class="row" style="flex-wrap:wrap;margin-top:8px">
@@ -64,7 +63,7 @@ export function renderTools(state: { running: boolean; startAt?: number; elapsed
 
           <div class="help">Custom note</div>
           <div class="row" style="margin-top:8px">
-            <input id="scribeText" placeholder="e.g. VF → shock, CPR resumed" />
+            <input id="scribeText" placeholder="e.g. VF â†’ shock, CPR resumed" />
             <button class="btn small primary" data-action="scribeAdd">Add</button>
           </div>
 
